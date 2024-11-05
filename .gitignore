@@ -189,5 +189,6 @@ gradle-app.setting
 *.hprof
 
 # End of https://www.toptal.com/developers/gitignore/api/java,gradle,kotlin,macos,intellij+all
-/src/main/resources/application.properties
 /gradle/wrapper/gradle-wrapper.jar
+/src/main/resources/application-*.properties
+
