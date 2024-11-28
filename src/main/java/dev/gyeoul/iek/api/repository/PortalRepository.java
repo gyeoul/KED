@@ -28,7 +28,15 @@ public class PortalRepository {
 
     public PortalRepository(Configuration configuration) {
         dsl = using(configuration);
+    }
 
+    public int clearArea(long minLatE6, long maxLatE6, long minLngE6, long maxLngE6) {
+        return dsl.deleteFrom(PORTAL)
+                .where(PORTAL.LATE6.between(minLatE6, maxLatE6))
+                .and(PORTAL.LNGE6.between(minLngE6, maxLngE6))
+                .and(PORTAL.IMAGE.isNull())
+                .and(PORTAL.LAST_UPDATE.lessThan(LocalDateTime.now().minusDays(10)))
+                .execute();
     }
 
     public PortalRecord getPortalByGuid(UUID guid) {

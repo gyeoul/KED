@@ -15,3 +15,7 @@ dependencies {
     implementation("org.jooq:jooq-codegen")
     runtimeOnly("org.postgresql:postgresql")
 }
+
+tasks.named("bootJar") {
+    enabled = false
+}

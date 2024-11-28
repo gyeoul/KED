@@ -16,92 +16,137 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 
-
+/**
+ * 포탈 검색 명령어를 처리하는 클래스
+ */
 @Slf4j
 @Component
 public class SearchPortal extends Command {
     private final PortalService service;
 
-    public SearchPortal(
-            PortalService service) {
+    public SearchPortal(PortalService service) {
         super("search", "검색");
         this.service = service;
     }
 
+    /**
+     * 명령어 옵션 설정
+     * - portal: 포탈명으로 정확한 검색
+     * - similar: 유사한 포탈명으로 검색
+     */
     @Override
     void addOption() {
-        var likeSearch = new SubcommandData("portal","포탈명");
-        var similarSearch = new SubcommandData("similar","유사 검색");
-        likeSearch.addOption(OptionType.STRING, "name", "포탈명", true, false);
-        similarSearch.addOption(OptionType.STRING, "name", "포탈명", true, false);
-        this.addSubcommands(likeSearch);
-        this.addSubcommands(similarSearch);
+        var likeSearch = createSubcommand("portal", "포탈명");
+        var similarSearch = createSubcommand("similar", "유사 검색");
+
+        this.addSubcommands(likeSearch, similarSearch);
     }
 
+    /**
+     * 서브커맨드 생성 헬퍼 메소드
+     */
+    private SubcommandData createSubcommand(String name, String description) {
+        return new SubcommandData(name, description)
+                .addOption(OptionType.STRING, "name", "포탈명", true, false);
+    }
+
+    /**
+     * 명령어 실행 처리
+     */
     @Override
     public void execute(SlashCommandInteractionEvent event) {
         var cmd = event.getFullCommandName();
-        log.info(cmd);
-        switch (cmd) {
-            case "search portal" -> event.reply(
-                    searchPortalsByName(
-                            event.getOption("name", OptionMapping::getAsString)
-                    )).queue();
-            case "search similar" -> event.reply(
-                    searchSimilarPortalsByName(
-                            event.getOption("name", OptionMapping::getAsString)
-                    )).queue();
-            default -> event.reply("").queue();
-        }
+        log.info("Executing command: {}", cmd);
+
+        var response = switch (cmd) {
+            case "search portal" -> searchPortalsByName(getNameOption(event));
+            case "search similar" -> searchSimilarPortalsByName(getNameOption(event));
+            default -> MessageCreateData.fromContent("잘못된 명령어입니다");
+        };
+
+        event.reply(response).queue();
     }
 
+    /**
+     * 이벤트에서 name 옵션 추출
+     */
+    private String getNameOption(SlashCommandInteractionEvent event) {
+        return event.getOption("name", OptionMapping::getAsString);
+    }
+
+    /**
+     * 유사 포탈 검색
+     */
     private MessageCreateData searchSimilarPortalsByName(String query) {
-        var list = service.searchSimilarPortalsByName(query);
-        return portalSearchEmbed(query, list);
+        var results = service.searchSimilarPortalsByName(query);
+        return createSearchResponse(query, results);
     }
 
+    /**
+     * 정확한 포탈명 검색
+     */
     private MessageCreateData searchPortalsByName(String query) {
-        var list = service.searchPortalsByName(query);
-        if (list.isEmpty()) {
-            return MessageCreateData.fromContent("검색결과가 없습니다");
-        }
-        return portalSearchEmbed(query, list);
+        var results = service.searchPortalsByName(query);
+        return results.isEmpty()
+                ? MessageCreateData.fromContent("검색결과가 없습니다")
+                : createSearchResponse(query, results);
     }
 
+    /**
+     * 검색 결과를 임베드 메시지로 변환
+     */
     @NotNull
-    private MessageCreateData portalSearchEmbed(String query, List<PortalQuery> list) {
+    private MessageCreateData createSearchResponse(String query, List<PortalQuery> portals) {
         return new MessageCreateBuilder()
                 .addContent("`%s` 검색결과".formatted(query))
-                .addEmbeds(list.stream()
-                        .map(portalQuery -> new EmbedBuilder()
-                                .setTitle(portalQuery.getName())
-                                .setThumbnail(portalQuery.getImage())
-                                .addField("",
-                                        "[스캐너]" +
-                                                "(" + UrlGenerator.builder()
-                                                .type(UrlGenerator.Type.PORTAL)
-                                                .link(convertGuid(portalQuery.getGuid()))
-                                                .lat(portalQuery.getLat())
-                                                .lng(portalQuery.getLng())
-                                                .build()
-                                                .generate() +
-                                                ")",
-                                        true)
-                                .addField("",
-                                        "[인텔맵]" +
-                                                "(" + UrlGenerator.builder()
-                                                .type(UrlGenerator.Type.INTEL_MAP)
-                                                .lat(portalQuery.getLat())
-                                                .lat(portalQuery.getLng())
-                                                .build()
-                                                .generate() +
-                                                ")",
-                                        true)
-                                .build())
+                .addEmbeds(portals.stream()
+                        .map(this::createPortalEmbed)
+                        .map(EmbedBuilder::build)
                         .toList())
                 .build();
     }
 
+    /**
+     * 포탈 정보로 임베드 생성
+     */
+    private EmbedBuilder createPortalEmbed(PortalQuery portal) {
+        return new EmbedBuilder()
+                .setTitle(portal.getName())
+                .setThumbnail(portal.getImage())
+                .addField("", createScannerLink(portal), true)
+                .addField("", createIntelMapLink(portal), true);
+    }
+
+    /**
+     * 스캐너 링크 생성
+     */
+    private String createScannerLink(PortalQuery portal) {
+        var url = UrlGenerator.builder()
+                .type(UrlGenerator.Type.PORTAL)
+                .link(convertGuid(portal.getGuid()))
+                .lat(portal.getLat())
+                .lng(portal.getLng())
+                .build()
+                .generate();
+        return "[스캐너](" + url + ")";
+    }
+
+    /**
+     * 인텔맵 링크 생성
+     */
+    private String createIntelMapLink(PortalQuery portal) {
+        var url = UrlGenerator.builder()
+                .type(UrlGenerator.Type.INTEL_MAP)
+                .lat(portal.getLat())
+                .lng(portal.getLng())
+                .build()
+                .generate();
+        return "[인텔맵](" + url + ")";
+    }
+
+    /**
+     * GUID 변환
+     */
     private String convertGuid(String guid) {
         return guid.replace("-", "") + ".16";
     }
